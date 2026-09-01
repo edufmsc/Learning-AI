@@ -6,13 +6,13 @@
   <title>學習成果明細｜AI Learning System</title>
   <link rel="stylesheet" href="system.css">
   <style>
-    body{background:#f5f9fc}.result-wrap{width:min(980px,calc(100% - 32px));margin:42px auto 70px}.result-top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:18px}.back-link{display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:#2e668c;font-weight:900}.result-card{background:#fff;border:1px solid #d6e5f0;border-radius:22px;box-shadow:0 12px 32px rgba(41,85,119,.08);overflow:hidden}.result-head{padding:28px 30px;background:linear-gradient(180deg,#eef7fd,#e6f1fa)}.result-head .eyebrow{margin-bottom:6px}.result-head h1{margin:0 0 8px;font-size:clamp(1.8rem,4vw,2.8rem)}.result-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid #d6e5f0;border-bottom:1px solid #d6e5f0}.result-grid>div{padding:18px 20px;border-right:1px solid #e3edf4}.result-grid>div:last-child{border-right:0}.result-grid span{display:block;color:#6d8293;font-size:.76rem}.result-grid strong{display:block;margin-top:4px}.answer-section{padding:28px 30px}.answer-box{min-height:170px;padding:20px;border:1px solid #d6e5f0;border-radius:16px;background:#f9fbfd;white-space:pre-wrap;line-height:1.8}.empty{color:#8495a3}.check-section{padding:0 30px 30px}.check-list{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:9px}.check-list li{padding:12px 14px;border:1px solid #dbe7ef;border-radius:12px;background:#fff}.done{color:#1d7a59;font-weight:900}.not-done{color:#8192a0}.person{margin-top:10px;color:#6d8293}.status-pill{display:inline-block;padding:5px 10px;border-radius:999px;font-size:.8rem;font-weight:900;background:#e8eef3;color:#586d7d}.status-pill.completed{background:#e6f5ed;color:#147657}.status-pill.progress{background:#e7f1fb;color:#2e668c}@media(max-width:760px){.result-grid{grid-template-columns:1fr 1fr}.result-grid>div:nth-child(2){border-right:0}.result-grid>div:nth-child(-n+2){border-bottom:1px solid #e3edf4}.result-top{align-items:flex-start;flex-direction:column}}
+    body{background:#f5f9fc}.result-wrap{width:min(980px,calc(100% - 32px));margin:42px auto 70px}.result-top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:18px}.back-link{display:inline-flex;align-items:center;gap:8px;padding:0;border:0;background:transparent;text-decoration:none;color:#2e668c;font:inherit;font-weight:900;cursor:pointer}.back-link:hover{color:#174f78;text-decoration:underline}.result-card{background:#fff;border:1px solid #d6e5f0;border-radius:22px;box-shadow:0 12px 32px rgba(41,85,119,.08);overflow:hidden}.result-head{padding:28px 30px;background:linear-gradient(180deg,#eef7fd,#e6f1fa)}.result-head .eyebrow{margin-bottom:6px}.result-head h1{margin:0 0 8px;font-size:clamp(1.8rem,4vw,2.8rem)}.result-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid #d6e5f0;border-bottom:1px solid #d6e5f0}.result-grid>div{padding:18px 20px;border-right:1px solid #e3edf4}.result-grid>div:last-child{border-right:0}.result-grid span{display:block;color:#6d8293;font-size:.76rem}.result-grid strong{display:block;margin-top:4px}.answer-section{padding:28px 30px}.answer-box{min-height:170px;padding:20px;border:1px solid #d6e5f0;border-radius:16px;background:#f9fbfd;white-space:pre-wrap;line-height:1.8}.empty{color:#8495a3}.check-section{padding:0 30px 30px}.check-list{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:9px}.check-list li{padding:12px 14px;border:1px solid #dbe7ef;border-radius:12px;background:#fff}.done{color:#1d7a59;font-weight:900}.not-done{color:#8192a0}.person{margin-top:10px;color:#6d8293}.status-pill{display:inline-block;padding:5px 10px;border-radius:999px;font-size:.8rem;font-weight:900;background:#e8eef3;color:#586d7d}.status-pill.completed{background:#e6f5ed;color:#147657}.status-pill.progress{background:#e7f1fb;color:#2e668c}@media(max-width:760px){.result-grid{grid-template-columns:1fr 1fr}.result-grid>div:nth-child(2){border-right:0}.result-grid>div:nth-child(-n+2){border-bottom:1px solid #e3edf4}.result-top{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
 <body>
   <main class="result-wrap">
     <div class="result-top">
-      <a class="back-link" href="index.html#roadmap">← 返回 20 天學習計畫</a>
+      <button id="backToRoadmap" class="back-link" type="button">← 返回 20 天學習計畫</button>
       <span id="personInfo" class="person"></span>
     </div>
 
@@ -47,5 +47,18 @@
 
   <script src="config.js"></script>
   <script src="result.js"></script>
+  <script>
+    document.getElementById('backToRoadmap').addEventListener('click', function () {
+      // 從 20 天計畫點進成果頁時，直接回到上一頁；
+      // 瀏覽器通常會保留原 Dashboard DOM 與登入狀態，不會重新要求 Google 登入。
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+
+      // 若成果頁是直接開啟的新分頁，才使用首頁作為備援。
+      window.location.replace('index.html#roadmap');
+    });
+  </script>
 </body>
 </html>
