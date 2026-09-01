@@ -47,16 +47,13 @@
 
   <script src="config.js"></script>
   <script src="result.js"></script>
+  <script src="ui-enhancements.js"></script>
   <script>
     document.getElementById('backToRoadmap').addEventListener('click', function () {
-      // 從 20 天計畫點進成果頁時，直接回到上一頁；
-      // 瀏覽器通常會保留原 Dashboard DOM 與登入狀態，不會重新要求 Google 登入。
       if (window.history.length > 1) {
         window.history.back();
         return;
       }
-
-      // 若成果頁是直接開啟的新分頁，才使用首頁作為備援。
       window.location.replace('index.html#roadmap');
     });
   </script>
