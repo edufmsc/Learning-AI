@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Learning System｜GAS 診斷</title>
+<style>
+body{margin:0;background:#f3f8fc;color:#17324a;font-family:"Microsoft JhengHei",system-ui,sans-serif}.wrap{width:min(840px,calc(100% - 32px));margin:48px auto}.card{background:#fff;border:1px solid #d7e6f2;border-radius:20px;padding:24px;box-shadow:0 15px 40px rgba(45,90,130,.08)}h1{margin:.2em 0}.muted{color:#6c8193}.status{display:inline-block;padding:7px 11px;border-radius:999px;background:#edf2f6;font-weight:800}.ok{background:#e6f5ed;color:#147657}.bad{background:#fbecec;color:#ad4141}pre{white-space:pre-wrap;word-break:break-word;background:#f6f9fb;padding:16px;border-radius:12px;min-height:120px}button{border:0;border-radius:10px;background:#2f6d98;color:#fff;padding:11px 16px;font-weight:800;cursor:pointer}.steps{margin-top:18px;padding:16px;border-radius:14px;background:#eaf4fb}</style>
+<script src="config.js"></script>
+</head>
+<body><main class="wrap"><div class="card"><p class="muted">BACKEND DIAGNOSTIC</p><h1>GAS Web App 連線測試</h1><p>此頁直接從 GitHub Pages 測試目前 config.js 的 Apps Script API。</p><p><strong>API：</strong><span id="api"></span></p><span id="status" class="status">等待測試</span><pre id="result">尚未執行</pre><button id="run">重新測試</button><div class="steps" id="hint">若失敗，請確認 GAS 部署為「執行身分：我」＋「誰可以存取：任何人」，並在管理部署中選擇「新版本」重新部署。</div></div></main>
+<script>
+const CFG=window.AI_LMS_CONFIG||{};const api=CFG.API_URL||'';document.getElementById('api').textContent=api||'尚未設定';
+function test(){const st=document.getElementById('status'),out=document.getElementById('result'),hint=document.getElementById('hint');st.textContent='測試中…';st.className='status';out.textContent='正在等待 GAS 回應…';const cb='gasDiag_'+Date.now();const s=document.createElement('script');let finished=false;const t=setTimeout(()=>done(false,'15 秒內沒有收到 JSONP callback。可能是部署版本仍是舊版，或 Web App 並未公開。'),15000);function cleanup(){clearTimeout(t);delete window[cb];s.remove()}function done(ok,msg){if(finished)return;finished=true;cleanup();st.textContent=ok?'連線成功':'連線失敗';st.className='status '+(ok?'ok':'bad');out.textContent=typeof msg==='string'?msg:JSON.stringify(msg,null,2);hint.textContent=ok?'GAS JSONP 已正常從 GitHub Pages 載入。回首頁即可測試 Google 登入。':'請先修正 Apps Script 部署：管理部署 → 編輯 → 版本選「新版本」→ 執行身分「我」→ 誰可以存取「任何人」→ 部署。'}window[cb]=r=>done(!!r?.ok,r);s.onerror=()=>done(false,'瀏覽器無法載入 GAS Web App。最常見原因：部署未設為「任何人」、部署 URL 已失效，或 /exec 仍指向舊版程式。');s.src=api+'?action=health&callback='+cb+'&_='+Date.now();document.head.appendChild(s)}
+document.getElementById('run').onclick=test;test();
+</script></body></html>
