@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="柯萬群 AI 學習工作計畫表，透過每日 1–2 小時任務、工具案例與成果紀錄，建立可持續的 AI 實作能力。">
+  <title>AI Learning Plan｜每日 AI 學習工作計畫</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- 首次進入畫面：不涉及登入驗證，只作為學習計畫入口。 -->
+  <section class="start-screen" id="startScreen" aria-labelledby="startTitle">
+    <div class="start-card">
+      <div class="brand-mark" aria-hidden="true">AI</div>
+      <p class="eyebrow">PERSONAL LEARNING SYSTEM</p>
+      <h1 id="startTitle">每天 1–2 小時，<br>把 AI 變成真正的工作能力。</h1>
+      <p class="start-description">
+        依序完成每日學習任務，從工具認識、實務操作到工作成果累積，建立適合人資教育工作的 AI 應用能力。
+      </p>
+      <div class="start-stats" aria-label="學習計畫摘要">
+        <div><strong>20</strong><span>個學習日</span></div>
+        <div><strong>1–2h</strong><span>每日投入</span></div>
+        <div><strong>4</strong><span>實務主題</span></div>
+      </div>
+      <button class="primary-button start-button" id="startButton" type="button">
+        START <span aria-hidden="true">→</span>
+      </button>
+      <p class="start-note">進度會儲存在目前瀏覽器，可隨時接續。</p>
+    </div>
+  </section>
+
+  <div class="app-shell hidden" id="appShell">
+    <header class="topbar">
+      <a class="brand" href="#today" aria-label="回到今日任務">
+        <span class="brand-icon">AI</span>
+        <span><strong>Learning Plan</strong><small>柯萬群｜AI 工作學習計畫</small></span>
+      </a>
+      <nav class="desktop-nav" aria-label="主要導覽">
+        <a href="#today">今日任務</a>
+        <a href="#tools">AI 工具</a>
+        <a href="#roadmap">學習計畫</a>
+        <a href="#results">目前成果</a>
+      </nav>
+      <div class="header-progress" aria-label="學習進度">
+        <span id="headerProgressText">0 / 20</span>
+        <div class="mini-progress"><span id="headerProgressBar"></span></div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero-section" id="today">
+        <div class="hero-copy">
+          <p class="eyebrow">TODAY'S MISSION</p>
+          <div class="day-badge" id="dayBadge">DAY 01</div>
+          <h2 id="todayTitle">AI 基礎與工作任務拆解</h2>
+          <p id="todaySummary">先建立正確的 AI 使用觀念，學會把模糊工作轉成清楚可執行的提示詞。</p>
+
+          <section class="step-check-card" aria-labelledby="stepCheckTitle">
+            <div class="step-check-card__heading">
+              <div>
+                <span class="step-check-card__label">TODAY'S CHECKLIST</span>
+                <h3 id="stepCheckTitle">今日完成確認</h3>
+              </div>
+              <strong id="stepProgressText">0 / 4</strong>
+            </div>
+            <ol class="step-check-list" id="dailyStepChecklist"></ol>
+            <p class="step-check-hint" id="stepCheckHint">依序勾選完成項目，確認今天每個學習步驟都有實際完成。</p>
+          </section>
+
+          <div class="task-meta">
+            <div>
+              <span class="meta-label">建議時間</span>
+              <strong id="todayDuration">90 分鐘</strong>
+            </div>
+            <div>
+              <span class="meta-label">今日工具</span>
+              <strong id="todayTool">ChatGPT</strong>
+            </div>
+            <div>
+              <span class="meta-label">產出成果</span>
+              <strong id="todayDeliverable">完成 3 組工作提示詞</strong>
+            </div>
+          </div>
+        </div>
+
+        <aside class="timer-card" aria-labelledby="timerTitle">
+          <div class="timer-heading">
+            <div>
+              <p class="eyebrow">FOCUS TIMER</p>
+              <h3 id="timerTitle">專注學習計時</h3>
+            </div>
+            <span class="status-dot" id="timerStatus">尚未開始</span>
+          </div>
+          <div class="timer-display" id="timerDisplay" aria-live="polite">01:30:00</div>
+          <div class="time-presets" aria-label="選擇專注時間">
+            <button type="button" data-minutes="60">60 分</button>
+            <button class="active" type="button" data-minutes="90">90 分</button>
+            <button type="button" data-minutes="120">120 分</button>
+          </div>
+          <div class="custom-time-control">
+            <label for="customMinutes">自訂今日時間</label>
+            <div class="custom-time-row">
+              <input id="customMinutes" type="number" min="10" max="360" step="5" inputmode="numeric" value="90" aria-describedby="customTimeHint">
+              <span>分鐘</span>
+              <button class="ghost-button" id="applyCustomTime" type="button">套用今日</button>
+            </div>
+            <small id="customTimeHint">可輸入 10–360 分鐘；套用後會同步更新今日計畫與下方工作計畫表。</small>
+          </div>
+          <div class="timer-actions">
+            <button class="primary-button" id="timerStart" type="button">開始計時</button>
+            <button class="ghost-button" id="timerReset" type="button">重設</button>
+          </div>
+          <p class="timer-tip">建議：學習 45–50 分鐘後休息 5–10 分鐘，再完成實作。</p>
+          <div class="timer-illustration" aria-hidden="true">
+            <svg viewBox="0 0 320 120" role="img" focusable="false">
+              <rect x="24" y="42" width="112" height="54" rx="12" fill="#dbeaf7" stroke="#8cb4d6" stroke-width="2"></rect>
+              <rect x="38" y="56" width="84" height="8" rx="4" fill="#8cb4d6"></rect>
+              <rect x="38" y="71" width="54" height="8" rx="4" fill="#b1cce4"></rect>
+              <path d="M148 94h72" stroke="#8cb4d6" stroke-width="4" stroke-linecap="round"></path>
+              <path d="M175 94l-12 12h44l-12-12" fill="#cfe1f0"></path>
+              <rect x="210" y="26" width="72" height="72" rx="18" fill="#eef6fd" stroke="#8cb4d6" stroke-width="2"></rect>
+              <circle cx="246" cy="62" r="18" fill="#d7ebfb"></circle>
+              <path d="M246 62l0-10M246 62l9 5" stroke="#2e668c" stroke-width="3.5" stroke-linecap="round"></path>
+              <circle cx="62" cy="24" r="7" fill="#a3c7e4"></circle>
+              <circle cx="88" cy="24" r="4" fill="#d8ebf9"></circle>
+              <circle cx="287" cy="18" r="5" fill="#b8d4ea"></circle>
+              <path d="M291 90c-8 0-14 6-14 14h28c0-8-6-14-14-14z" fill="#b7d8ef"></path>
+            </svg>
+          </div>
+        </aside>
+      </section>
+
+      <section class="content-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">TODAY'S PLAN</p>
+            <h2>今天該學什麼？</h2>
+          </div>
+          <button class="complete-button" id="completeDayButton" type="button">✓ 標記今日完成</button>
+        </div>
+
+        <div class="learning-grid">
+          <article class="panel lesson-panel">
+            <span class="panel-number">01</span>
+            <h3>學習重點</h3>
+            <ul class="check-list" id="learningPoints"></ul>
+          </article>
+          <article class="panel case-panel">
+            <span class="panel-number">02</span>
+            <h3>工作實用案例</h3>
+            <p id="todayCase"></p>
+            <div class="prompt-box">
+              <span>實作提示</span>
+              <p id="practicePrompt"></p>
+            </div>
+          </article>
+          <article class="panel output-panel">
+            <span class="panel-number">03</span>
+            <h3>今日成果任務</h3>
+            <p id="outputTask"></p>
+            <label class="result-label" for="resultInput">留下今天的成果紀錄</label>
+            <textarea id="resultInput" rows="4" maxlength="300" placeholder="例如：完成外訓課程通知信提示詞，並成功縮短整理時間……"></textarea>
+            <button class="secondary-button" id="saveResultButton" type="button">儲存成果</button>
+            <p class="form-message" id="saveMessage" aria-live="polite"></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-section soft-section" id="tools">
+        <div class="section-heading compact-heading">
+          <div>
+            <p class="eyebrow">AI TOOLKIT</p>
+            <h2>AI 工具功能與實用案例</h2>
+            <p>不追求工具越多越好，而是知道每一種工具最適合解決什麼工作。</p>
+          </div>
+        </div>
+        <div class="tool-grid" id="toolGrid"></div>
+      </section>
+
+      <section class="content-section" id="roadmap">
+        <div class="section-heading roadmap-heading">
+          <div>
+            <p class="eyebrow">20-DAY ROADMAP</p>
+            <h2>AI 學習工作計畫表</h2>
+            <p>可自行勾選完成／取消完成，時間欄也可直接修改；系統會把下一個未完成項目分配為「今日任務」。</p>
+          </div>
+          <div class="progress-summary">
+            <strong id="progressPercent">0%</strong>
+            <span>總完成率</span>
+          </div>
+        </div>
+        <div class="progress-track" aria-hidden="true"><span id="mainProgressBar"></span></div>
+        <div class="roadmap-table-wrap">
+          <table class="roadmap-table">
+            <thead>
+              <tr>
+                <th>完成</th>
+                <th>主題</th>
+                <th>AI 工具</th>
+                <th>實作成果</th>
+                <th>時間</th>
+              </tr>
+            </thead>
+            <tbody id="roadmapBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="content-section results-section" id="results">
+        <div class="section-heading compact-heading">
+          <div>
+            <p class="eyebrow">CURRENT APPLICATION</p>
+            <h2>現行 AI 使用成果</h2>
+            <p>以目前人資教育工作情境整理，內容可直接自行修改或持續新增。</p>
+          </div>
+        </div>
+
+        <div class="achievement-grid">
+          <article class="achievement-card">
+            <span class="achievement-icon">01</span>
+            <div><small>文件與教材</small><h3>訓練內容快速整理</h3><p>運用生成式 AI 協助整理課程架構、訓練手冊、公告及教學文字，降低初稿整理時間。</p></div>
+          </article>
+          <article class="achievement-card">
+            <span class="achievement-icon">02</span>
+            <div><small>人才發展</small><h3>能力盤點與問卷設計</h3><p>協助建立 AI 能力分級、職能盤點題目與學習需求調查，讓培訓需求更容易被量化。</p></div>
+          </article>
+          <article class="achievement-card">
+            <span class="achievement-icon">03</span>
+            <div><small>流程效率</small><h3>表單與自動化應用</h3><p>將 Google Sheets、表單與 Apps Script 結合，逐步把重複性整理、追蹤與提醒工作流程化。</p></div>
+          </article>
+          <article class="achievement-card">
+            <span class="achievement-icon">04</span>
+            <div><small>視覺溝通</small><h3>簡報與圖像製作</h3><p>透過 AI 協助產出簡報架構、示意圖與視覺素材，加快內部提案及教育訓練教材製作。</p></div>
+          </article>
+        </div>
+
+        <div class="saved-results-panel">
+          <div class="saved-results-heading">
+            <div><h3>我的學習成果紀錄</h3><p>每天儲存的實作成果會出現在這裡。</p></div>
+            <button class="text-button" id="clearResultsButton" type="button">清除紀錄</button>
+          </div>
+          <div class="saved-results-list" id="savedResultsList"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- 浮動計時器：捲離原本計時卡後自動顯示，並與主計時器同步。 -->
+    <aside class="floating-timer" id="floatingTimer" aria-label="浮動專注計時器" aria-hidden="true">
+      <div class="floating-timer__main">
+        <span class="floating-timer__label">FOCUS TIMER</span>
+        <strong class="floating-timer__display" id="floatingTimerDisplay">01:30:00</strong>
+        <span class="floating-timer__status" id="floatingTimerStatus">尚未開始</span>
+      </div>
+      <div class="floating-timer__actions">
+        <button class="floating-timer__button primary" id="floatingTimerToggle" type="button">開始</button>
+        <button class="floating-timer__button" id="floatingTimerReset" type="button">重設</button>
+        <a class="floating-timer__back" href="#today" aria-label="回到完整計時器">↑</a>
+      </div>
+    </aside>
+
+    <footer>
+      <p><strong>AI Learning Plan</strong>｜讓學習直接連結工作成果</p>
+      <button class="text-button" id="backToStart" type="button">返回 START 畫面</button>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
