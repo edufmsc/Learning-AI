@@ -36,16 +36,26 @@ function businessDate(start, day){
   return d.toISOString().slice(0,10);
 }
 
+function todayLocal(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
 function loadContext(){
   const params = new URLSearchParams(location.search);
   const dayNo = Math.max(1, Math.min(20, Number(params.get('day')) || 1));
   const email = sessionStorage.getItem('ai-learning-active-email') || '';
   const name = sessionStorage.getItem('ai-learning-active-name') || '';
   const prefix = CFG.STORAGE_PREFIX || 'ai-learning-v3:';
+  let storageKey = '';
   let store = null;
 
   if(email){
-    try{ store = JSON.parse(localStorage.getItem(prefix + email.toLowerCase()) || 'null'); }catch(e){ store = null; }
+    storageKey = prefix + email.toLowerCase();
+    try{ store = JSON.parse(localStorage.getItem(storageKey) || 'null'); }catch(e){ store = null; }
   }
 
   if(!store){
@@ -55,15 +65,28 @@ function loadContext(){
       if(key && key.startsWith(prefix)) keys.push(key);
     }
     if(keys.length===1){
+      storageKey = keys[0];
       try{ store = JSON.parse(localStorage.getItem(keys[0]) || 'null'); }catch(e){ store=null; }
     }
   }
 
-  return {dayNo,email,name,store};
+  return {dayNo,email,name,store,storageKey};
 }
 
+function checklistLabels(meta){
+  return [
+    '閱讀今日學習重點',
+    '完成至少一次實際操作',
+    '留下成果或學習紀錄',
+    `完成今日成果：${meta.deliverable}`
+  ];
+}
+
+let context = loadContext();
+
 function render(){
-  const {dayNo,email,name,store} = loadContext();
+  context = loadContext();
+  const {dayNo,email,name,store} = context;
   const meta = DAY_META.find(x=>x.day_no===dayNo);
   const record = store?.records?.[dayNo] || {};
   const checks = store?.checklist?.[dayNo] || {};
@@ -81,21 +104,84 @@ function render(){
   $('plannedMinutes').textContent = `${Number(record.planned_minutes || meta.default_minutes)} 分`;
   $('actualMinutes').textContent = `${Number(record.actual_minutes || 0)} 分`;
 
-  const answer = String(record.result_note || '').trim();
-  $('answerBox').textContent = answer || '尚未留下成果紀錄。';
-  $('answerBox').classList.toggle('empty', !answer);
+  $('answerEditor').value = String(record.result_note || '').trim();
 
-  const labels = [
-    '閱讀今日學習重點',
-    '完成至少一次實際操作',
-    '留下成果或學習紀錄',
-    `完成今日成果：${meta.deliverable}`
-  ];
+  const labels = checklistLabels(meta);
   $('checkList').innerHTML = labels.map((text,i)=>{
     const item = checks[i+1];
     const done = !!item?.checked;
-    return `<li class="${done?'done':'not-done'}">${done?'✓':'○'} ${text}</li>`;
+    return `<li class="${done?'checked':''}"><label class="history-check"><input type="checkbox" data-history-check="${i+1}" ${done?'checked':''}><strong>${text}</strong></label></li>`;
   }).join('');
+
+  const supplementDate = record.supplement_date || '';
+  if(supplementDate){
+    $('supplementNote').textContent = `最近補登日期：${supplementDate}`;
+    $('supplementNote').classList.add('visible');
+  }else{
+    $('supplementNote').classList.remove('visible');
+  }
 }
+
+function ensureStore(){
+  if(!context.storageKey) throw new Error('找不到目前使用者的個人學習紀錄。');
+  if(!context.store) context.store = {startDate:todayLocal(),records:{},checklist:{},checkins:[],portfolio:[],report:null};
+  context.store.records ||= {};
+  context.store.checklist ||= {};
+}
+
+function appendSupplementDate(text, date){
+  const clean = String(text || '').replace(/\n*補登日期：\d{4}-\d{2}-\d{2}\s*$/,'').trimEnd();
+  return clean ? `${clean}\n\n補登日期：${date}` : `補登日期：${date}`;
+}
+
+function saveSupplement(){
+  try{
+    ensureStore();
+    const meta = DAY_META.find(x=>x.day_no===context.dayNo);
+    const day = context.dayNo;
+    const date = todayLocal();
+    const existing = context.store.records[day] || {};
+    const originallyCompleted = existing.status === 'completed';
+    const answer = $('answerEditor').value.trim();
+    const finalAnswer = appendSupplementDate(answer, date);
+
+    context.store.records[day] = {
+      ...existing,
+      day_no: day,
+      planned_minutes: Number(existing.planned_minutes || meta.default_minutes),
+      actual_minutes: Number(existing.actual_minutes || 0),
+      schedule_date: existing.schedule_date || businessDate(context.store.startDate || date, day),
+      status: originallyCompleted ? 'completed' : (existing.status || 'in_progress'),
+      result_note: finalAnswer,
+      supplement_date: date,
+      updated_at: new Date().toISOString()
+    };
+
+    context.store.checklist[day] ||= {};
+    const labels = checklistLabels(meta);
+    document.querySelectorAll('[data-history-check]').forEach(box=>{
+      const idx = Number(box.dataset.historyCheck);
+      context.store.checklist[day][idx] = {
+        checked: box.checked,
+        item_text: labels[idx-1],
+        supplemented_at: date
+      };
+    });
+
+    localStorage.setItem(context.storageKey, JSON.stringify(context.store));
+    sessionStorage.setItem('ai-learning-history-updated', String(Date.now()));
+    $('supplementMessage').textContent = `已儲存補登／修改，補登日期：${date}`;
+    render();
+  }catch(error){
+    $('supplementMessage').textContent = `儲存失敗：${error.message}`;
+  }
+}
+
+$('saveSupplementBtn').addEventListener('click', saveSupplement);
+$('checkList').addEventListener('change', event=>{
+  const box = event.target.closest('[data-history-check]');
+  if(!box) return;
+  box.closest('li')?.classList.toggle('checked', box.checked);
+});
 
 render();
