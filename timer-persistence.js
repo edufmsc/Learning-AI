@@ -1,8 +1,9 @@
 'use strict';
 
 (function () {
-  // This patch intentionally runs after app.js and reuses its current user/store state.
-  // It makes learning time cumulative per DAY and safely pauses/saves on page/tab exit.
+  // Runs after app.js and reuses the current user/store state.
+  // Learning time is cumulative per DAY. Switching tabs keeps counting;
+  // closing/reloading/leaving the learning page saves and stops the session.
 
   const CHECKPOINT_MS = 5000;
   let lastCheckpointAt = 0;
@@ -139,7 +140,7 @@
     timer.remaining = Math.max(0, plannedSeconds() - elapsed);
     syncTimer();
     const message = document.getElementById('saveMessage');
-    if (message && reason && reason !== '頁面切換') {
+    if (message && reason && reason !== '頁面關閉') {
       message.textContent = `${reason}，學習時間已自動保存。`;
     }
   }
@@ -165,7 +166,6 @@
     updateDashboardTotal();
   }
 
-  // Override the existing timer display so all original UI can keep using syncTimer().
   syncTimer = function () {
     const display = document.getElementById('timerDisplay');
     const toggle = document.getElementById('timerToggle');
@@ -173,7 +173,6 @@
     if (toggle) toggle.textContent = timer.running ? '暫停' : '開始';
   };
 
-  // Every render of a DAY should restore that DAY's saved elapsed time instead of resetting to zero.
   const originalRenderToday = renderToday;
   renderToday = function () {
     if (timer.running) pauseAndPersist('');
@@ -181,7 +180,6 @@
     restoreCurrentDayTimer();
   };
 
-  // Keep historical time and cumulative seconds when saving progress/completing a DAY.
   saveRecord = function (status = 'in_progress') {
     if (!hasSession()) return;
     if (timer.running) pauseAndPersist('');
@@ -281,8 +279,6 @@
     if (reset) {
       reset.onclick = () => {
         if (timer.running) pauseAndPersist('');
-        // Reset only the countdown view to the saved cumulative point.
-        // It intentionally does NOT erase the learner's accumulated study time.
         restoreCurrentDayTimer();
         const msg = document.getElementById('saveMessage');
         if (msg) msg.textContent = '計時器已回到目前累積進度；已學時間不會被清除。';
@@ -290,21 +286,24 @@
     }
   }
 
-  function pauseOnInterruption() {
-    if (document.visibilityState === 'hidden' && timer.running) {
-      pauseAndPersist('頁面切換');
+  // IMPORTANT: changing browser tabs does NOT pause the timer.
+  // Date.now() keeps the real elapsed time, so using ChatGPT/NotebookLM/Sheets
+  // in another tab is still counted as part of the learning session.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && timer.running) {
+      refreshClockFromNow();
     }
-  }
+  });
 
-  document.addEventListener('visibilitychange', pauseOnInterruption);
+  // Closing, reloading, or navigating away from the learning page ends this session.
+  // The elapsed time is saved, and the learner presses Start again next time.
   window.addEventListener('pagehide', () => {
-    if (timer.running) pauseAndPersist('頁面切換');
+    if (timer.running) pauseAndPersist('頁面關閉');
   });
   window.addEventListener('beforeunload', () => {
-    if (timer.running) pauseAndPersist('頁面切換');
+    if (timer.running) pauseAndPersist('頁面關閉');
   });
 
-  // If the user navigates back from another page, re-read the latest localStorage data.
   window.addEventListener('pageshow', () => {
     if (!profile || !data) return;
     try {
