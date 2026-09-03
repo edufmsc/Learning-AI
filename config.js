@@ -1,13 +1,14 @@
 window.AI_LMS_CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbzFHp4ZOqhtmZZgvqYRtLfdHgsA6vHyt_HmSCqUXs2QqK0rIVzV8xpN1Z1pPgTTLul_/exec',
+  // 尚未建立新的 Apps Script Web App；完成部署後將新的 /exec 網址填入這裡。
+  API_URL: '',
   GOOGLE_CLIENT_ID: '731637287753-diajenfrr7p0bs43isijf1t40u7a07m6.apps.googleusercontent.com',
   SITE_ORIGIN: 'https://edufmsc.github.io',
 
-  // GAS 重新作為正式資料來源；localStorage 僅保留為目前瀏覽器快取與舊資料相容層。
+  // GAS 正式上線後作為中央資料來源；localStorage 目前保留為瀏覽器快取與既有資料相容層。
   BACKEND_MODE: 'gas',
   STORAGE_PREFIX: 'ai-learning-v3:',
 
-  // 舊的 Google Form 紀錄方式先保留但停用，避免與 GAS/Sheet 重複寫入。
+  // 舊的 Google Form 紀錄方式停用，避免未來與 GAS / Google Sheet 重複寫入。
   SHEET_LOG: {
     enabled: false,
     formAction: '',
