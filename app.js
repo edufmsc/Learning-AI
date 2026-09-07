@@ -10,7 +10,7 @@ const PLAN=[
 {day_no:1,phase:'基礎',title:'AI 基礎與工作任務拆解',tool:'ChatGPT',default_minutes:90,deliverable:'完成 3 組工作提示詞',tags:['prompt']},
 {day_no:2,phase:'基礎',title:'提示詞進階與品質檢查',tool:'ChatGPT',default_minutes:90,deliverable:'建立 Prompt 範本',tags:['prompt']},
 {day_no:3,phase:'文件',title:'文件摘要與重點提取',tool:'ChatGPT / NotebookLM',default_minutes:90,deliverable:'完成 1 份摘要表',tags:['document','research']},
-{day_no:4,phase:'文件',title:'訓練手冊與 SOP 協作','ChatGPT',120,'完成 1 頁 SOP','document,workflow'},
+{day_no:4,phase:'文件',title:'訓練手冊與 SOP 協作',tool:'ChatGPT',default_minutes:120,deliverable:'完成 1 頁 SOP',tags:['document','workflow']},
 {day_no:5,phase:'文件',title:'Email、公告與內部溝通',tool:'ChatGPT',default_minutes:60,deliverable:'建立 3 種訊息模板',tags:['document','prompt']},
 {day_no:6,phase:'研究',title:'AI 搜尋與資料查核',tool:'ChatGPT Search',default_minutes:90,deliverable:'完成來源比較表',tags:['research']},
 {day_no:7,phase:'研究',title:'比較分析與決策建議',tool:'ChatGPT',default_minutes:90,deliverable:'完成決策矩陣',tags:['research','data']},
