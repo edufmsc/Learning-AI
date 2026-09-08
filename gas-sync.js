@@ -5,6 +5,9 @@
 
   const SESSION_STORAGE_KEY = 'ai-learning-gas-session-v31';
   const CLOUD_CHECKPOINT_MS = 30000;
+  const RETRYABLE_ACTIONS = new Set(['health', 'bootstrap', 'getPlan']);
+  const RETRY_ATTEMPTS = 3;
+  const RETRY_BASE_DELAY_MS = 800;
   let cloudSession = sessionStorage.getItem(SESSION_STORAGE_KEY) || '';
   let cloudConnected = false;
   let checkpointId = null;
@@ -71,9 +74,47 @@
   }
 
   async function api(action, payload = {}, options = {}) {
-    const response = await jsonp(action, payload, options);
-    if (!response?.ok) throw new Error(response?.error || `GAS ${action} 操作失敗`);
-    return response.data;
+    const retryable = RETRYABLE_ACTIONS.has(action);
+    const attempts = retryable ? RETRY_ATTEMPTS : 1;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        const response = await jsonp(action, payload, options);
+
+        if (!response?.ok) {
+          const backendError = new Error(response?.error || `GAS ${action} 操作失敗`);
+          backendError.isBackendError = true;
+          throw backendError;
+        }
+
+        if (attempt > 1) {
+          console.info(`GAS ${action} 第 ${attempt} 次連線成功`);
+        }
+
+        return response.data;
+      } catch (error) {
+        lastError = error;
+
+        // 後端已正常回覆的業務錯誤（例如 Session 過期、版本錯誤）不重試。
+        // 只有 script 載入失敗或逾時等暫時性連線問題才自動重試。
+        if (!retryable || error?.isBackendError || attempt >= attempts) {
+          break;
+        }
+
+        const waitMs = RETRY_BASE_DELAY_MS * attempt;
+        console.warn(`GAS ${action} 第 ${attempt} 次連線失敗，${waitMs}ms 後重試`, error);
+        await sleep(waitMs);
+      }
+    }
+
+    if (retryable && lastError && !lastError.isBackendError) {
+      const finalError = new Error(`GAS ${action} 連線失敗，已自動重試 ${RETRY_ATTEMPTS} 次：${lastError.message}`);
+      finalError.cause = lastError;
+      throw finalError;
+    }
+
+    throw lastError || new Error(`GAS ${action} 操作失敗`);
   }
 
   function postLoginCredential(credential, sessionKey) {
