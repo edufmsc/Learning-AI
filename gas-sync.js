@@ -1,13 +1,60 @@
 'use strict';
 
 (function () {
+  if (!window.AI_LMS_BRIDGE) {
+    if (window.__AI_LMS_BRIDGE_LOADING__) return;
+    window.__AI_LMS_BRIDGE_LOADING__ = true;
+
+    const client = document.createElement('script');
+    client.src = 'gas-bridge-client.js?v=32';
+    client.onload = () => {
+      const sync = document.createElement('script');
+      sync.src = 'gas-sync.js?bridgeInit=32';
+      document.head.appendChild(sync);
+    };
+    client.onerror = () => {
+      window.__AI_LMS_BRIDGE_LOADING__ = false;
+      const msg = document.getElementById('loginMessage');
+      if (msg) msg.textContent = '無法載入 GAS Bridge 前端元件。';
+    };
+    document.head.appendChild(client);
+    return;
+  }
+
   const CFG = window.AI_LMS_CONFIG || {};
   const BRIDGE = window.AI_LMS_BRIDGE;
-  if (!BRIDGE) return;
-
   const CLOUD_CHECKPOINT_MS = 30000;
   let cloudConnected = false;
   let checkpointId = null;
+
+  // 使用支援的瀏覽器時改用 FedCM，降低傳統 Google popup 的 COOP 警告與跨視窗依賴。
+  if (typeof initGoogle === 'function') {
+    initGoogle = function () {
+      if (!CFG.GOOGLE_CLIENT_ID) {
+        $('configWarning').classList.remove('hidden');
+        $('configWarning').textContent = '尚未設定 Google Client ID。';
+        return;
+      }
+      if (!window.google?.accounts?.id) {
+        setTimeout(initGoogle, 400);
+        return;
+      }
+      google.accounts.id.initialize({
+        client_id: CFG.GOOGLE_CLIENT_ID,
+        callback: handleCredential,
+        auto_select: false,
+        use_fedcm_for_button: true
+      });
+      google.accounts.id.renderButton($('googleButton'), {
+        theme: 'outline',
+        size: 'large',
+        shape: 'pill',
+        text: 'signin_with',
+        width: 320
+      });
+      $('loginMessage').textContent = '請使用 Google 帳號登入。';
+    };
+  }
 
   function isTrue(value) {
     return value === true || String(value).toUpperCase() === 'TRUE';
@@ -70,16 +117,12 @@
   function mergeRecord(localRecord, cloudRecord) {
     if (!localRecord) return cloudRecord;
     if (!cloudRecord) return localRecord;
-
     const localTime = parseStamp(localRecord.updated_at);
     const cloudTime = parseStamp(cloudRecord.updated_at);
     const newer = localTime > cloudTime ? localRecord : cloudRecord;
-
     return {
       ...newer,
-      status: localRecord.status === 'completed' || cloudRecord.status === 'completed'
-        ? 'completed'
-        : newer.status,
+      status: localRecord.status === 'completed' || cloudRecord.status === 'completed' ? 'completed' : newer.status,
       actual_seconds: Math.max(Number(localRecord.actual_seconds || 0), Number(cloudRecord.actual_seconds || 0)),
       actual_minutes: Math.max(Number(localRecord.actual_minutes || 0), Number(cloudRecord.actual_minutes || 0))
     };
@@ -94,12 +137,10 @@
     merged.startDate = cloudStore.startDate || localStore.startDate || merged.startDate;
     merged.records = {};
 
-    const recordDays = new Set([
+    new Set([
       ...Object.keys(localStore.records || {}),
       ...Object.keys(cloudStore.records || {})
-    ]);
-
-    recordDays.forEach(day => {
+    ]).forEach(day => {
       const record = mergeRecord(localStore.records?.[day], cloudStore.records?.[day]);
       if (record) merged.records[day] = record;
     });
@@ -108,18 +149,13 @@
     Object.entries(cloudStore.checklist || {}).forEach(([day, items]) => {
       merged.checklist[day] ||= {};
       Object.entries(items || {}).forEach(([no, item]) => {
-        if (!merged.checklist[day][no]) merged.checklist[day][no] = item;
-        else if (parseStamp(item.updated_at) >= parseStamp(merged.checklist[day][no].updated_at)) {
+        if (!merged.checklist[day][no] || parseStamp(item.updated_at) >= parseStamp(merged.checklist[day][no].updated_at)) {
           merged.checklist[day][no] = item;
         }
       });
     });
 
-    merged.checkins = [...new Set([
-      ...(localStore.checkins || []),
-      ...(cloudStore.checkins || [])
-    ])].sort();
-
+    merged.checkins = [...new Set([...(localStore.checkins || []), ...(cloudStore.checkins || [])])].sort();
     const portfolio = [];
     const seen = new Set();
     [...(cloudStore.portfolio || []), ...(localStore.portfolio || [])].forEach(item => {
@@ -152,10 +188,7 @@
 
     for (const [day, localRecord] of Object.entries(localStore.records || {})) {
       const cloudRecord = cloudStore.records?.[day];
-      const localTime = parseStamp(localRecord.updated_at);
-      const cloudTime = parseStamp(cloudRecord?.updated_at);
-
-      if (!cloudRecord || localTime > cloudTime || Number(localRecord.actual_seconds || 0) > Number(cloudRecord.actual_seconds || 0)) {
+      if (!cloudRecord || parseStamp(localRecord.updated_at) > parseStamp(cloudRecord?.updated_at) || Number(localRecord.actual_seconds || 0) > Number(cloudRecord.actual_seconds || 0)) {
         await api('saveRecord', recordPayload(day, localRecord));
       }
     }
@@ -163,8 +196,7 @@
     const remoteChecks = new Set((remote?.checklist || []).map(item => `${item.day_no}:${item.item_no}`));
     for (const [day, items] of Object.entries(localStore.checklist || {})) {
       for (const [no, item] of Object.entries(items || {})) {
-        const key = `${day}:${no}`;
-        if (remoteChecks.has(key)) continue;
+        if (remoteChecks.has(`${day}:${no}`)) continue;
         await api('saveChecklist', {
           day_no: Number(day),
           item_no: Number(no),
@@ -192,19 +224,16 @@
       await api('syncStore', {
         store: {
           startDate: localStore.startDate || '',
-          records: {},
-          checklist: {},
+          records: {}, checklist: {},
           checkins: localStore.checkins || [],
-          portfolio: [],
-          report: null
+          portfolio: [], report: null
         }
       });
     }
   }
 
   function applyRemote(remote, localBefore) {
-    const cloudStore = remoteToStore(remote);
-    const merged = mergeStores(localBefore || loadStore(), cloudStore);
+    const merged = mergeStores(localBefore || loadStore(), remoteToStore(remote));
     data = { store: merged };
     saveStore();
     hydrate();
@@ -251,14 +280,12 @@
       $('loginMessage').textContent = '正在載入個人學習紀錄…';
       const localBefore = loadStore();
       let remote = await api('bootstrap');
-
       await pushLocalDifferences(localBefore, remote);
       remote = await api('bootstrap');
       applyRemote(remote, localBefore);
 
       sessionStorage.setItem('ai-learning-active-email', profile.email || '');
       sessionStorage.setItem('ai-learning-active-name', profile.name || '');
-
       $('loginScreen').classList.add('hidden');
       $('appShell').classList.remove('hidden');
       $('loginMessage').textContent = '登入完成。';
@@ -268,7 +295,7 @@
       document.documentElement.dataset.aiLmsBackend = 'error';
       $('loginMessage').textContent = '登入失敗：' + error.message;
       $('configWarning').classList.remove('hidden');
-      $('configWarning').innerHTML = '<strong>Google 帳號已選取，但學習資料庫橋接失敗。</strong><br>' + esc(error.message);
+      $('configWarning').innerHTML = '<strong>Google 帳號已選取，但 GAS Bridge 連線失敗。</strong><br>' + esc(error.message);
     }
   };
 
@@ -277,13 +304,10 @@
     const day = Number(data?.currentPlan?.day_no || 0);
     localSaveRecord(status);
     if (!BRIDGE.hasSession() || !day) return;
-
     const record = data?.store?.records?.[day];
     if (!record) return;
-
     const message = $('saveMessage');
     if (message) message.textContent = '已儲存在瀏覽器，正在同步學習紀錄…';
-
     api('saveRecord', recordPayload(day, record))
       .then(() => {
         cloudConnected = true;
@@ -300,7 +324,6 @@
   $('checklist').addEventListener('change', event => {
     const box = event.target.closest('[data-check]');
     if (!box || !BRIDGE.hasSession() || !data?.currentPlan) return;
-
     const day = Number(data.currentPlan.day_no);
     const no = Number(box.dataset.check);
     api('saveChecklist', {
@@ -315,8 +338,7 @@
   $('checkinBtn').onclick = function () {
     const day = Number(data?.currentPlan?.day_no || 1);
     if (typeof localCheckin === 'function') localCheckin.call(this);
-    if (!BRIDGE.hasSession()) return;
-    api('checkin', { day_no: day }).catch(error => console.warn('Check-in bridge sync failed:', error));
+    if (BRIDGE.hasSession()) api('checkin', { day_no: day }).catch(error => console.warn('Check-in bridge sync failed:', error));
   };
 
   const localPortfolio = $('addPortfolioBtn').onclick;
@@ -328,32 +350,25 @@
       result: $('portfolioResult').value.trim(),
       result_link: $('portfolioLink').value.trim()
     };
-
     if (typeof localPortfolio === 'function') localPortfolio.call(this);
-    if (!BRIDGE.hasSession() || !payload.title) return;
-
-    api('savePortfolio', payload).catch(error => console.warn('Portfolio bridge sync failed:', error));
+    if (BRIDGE.hasSession() && payload.title) api('savePortfolio', payload).catch(error => console.warn('Portfolio bridge sync failed:', error));
   };
 
   const localReport = $('generateReportBtn').onclick;
   $('generateReportBtn').onclick = function () {
     if (typeof localReport === 'function') localReport.call(this);
     if (!BRIDGE.hasSession()) return;
-
-    api('generateReport')
-      .then(report => {
-        data.store.report = report;
-        saveStore();
-        hydrate();
-        renderReport(report);
-      })
-      .catch(error => console.warn('Report bridge sync failed:', error));
+    api('generateReport').then(report => {
+      data.store.report = report;
+      saveStore();
+      hydrate();
+      renderReport(report);
+    }).catch(error => console.warn('Report bridge sync failed:', error));
   };
 
   const localLogout = $('logoutBtn').onclick;
   $('logoutBtn').onclick = function () {
-    const hadSession = BRIDGE.hasSession();
-    if (hadSession) api('logout').catch(() => {});
+    if (BRIDGE.hasSession()) api('logout').catch(() => {});
     BRIDGE.clearSession();
     cloudConnected = false;
     sessionStorage.removeItem('ai-learning-active-email');
@@ -365,17 +380,13 @@
     if (!cloudConnected || !BRIDGE.hasSession() || !data?.currentPlan || !timer?.running) return;
     const day = Number(data.currentPlan.day_no);
     const record = data.store.records?.[day];
-    if (!record) return;
-    api('saveRecord', recordPayload(day, record)).catch(error => console.warn('Timer bridge checkpoint failed:', error));
+    if (record) api('saveRecord', recordPayload(day, record)).catch(error => console.warn('Timer bridge checkpoint failed:', error));
   }
 
   checkpointId = setInterval(checkpointCurrentTimer, CLOUD_CHECKPOINT_MS);
-
   window.addEventListener('pageshow', () => {
-    if (!BRIDGE.hasSession() || !profile || !data) return;
-    refreshCloud().catch(error => console.warn('Bridge cloud refresh skipped:', error));
+    if (BRIDGE.hasSession() && profile && data) refreshCloud().catch(error => console.warn('Bridge cloud refresh skipped:', error));
   });
-
   window.addEventListener('pagehide', () => {
     if (checkpointId) clearInterval(checkpointId);
   });
