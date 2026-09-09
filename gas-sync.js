@@ -1,14 +1,11 @@
 'use strict';
 
 (function () {
-  if (typeof CFG === 'undefined' || !CFG.API_URL) return;
+  const CFG = window.AI_LMS_CONFIG || {};
+  const BRIDGE = window.AI_LMS_BRIDGE;
+  if (!BRIDGE) return;
 
-  const SESSION_STORAGE_KEY = 'ai-learning-gas-session-v31';
   const CLOUD_CHECKPOINT_MS = 30000;
-  const RETRYABLE_ACTIONS = new Set(['health', 'bootstrap', 'getPlan']);
-  const RETRY_ATTEMPTS = 3;
-  const RETRY_BASE_DELAY_MS = 800;
-  let cloudSession = sessionStorage.getItem(SESSION_STORAGE_KEY) || '';
   let cloudConnected = false;
   let checkpointId = null;
 
@@ -27,151 +24,8 @@
     return Number.isNaN(time) ? 0 : time;
   }
 
-  function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  function randomSessionKey() {
-    const bytes = new Uint8Array(32);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes).map(v => v.toString(16).padStart(2, '0')).join('');
-  }
-
-  function jsonp(action, payload = {}, options = {}) {
-    return new Promise((resolve, reject) => {
-      const callback = 'learningAiGas_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-      const script = document.createElement('script');
-      const params = new URLSearchParams({
-        action,
-        callback,
-        _: String(Date.now())
-      });
-
-      if (payload && Object.keys(payload).length) {
-        params.set('payload', JSON.stringify(payload));
-      }
-
-      const session = options.session === undefined ? cloudSession : options.session;
-      if (session) params.set('session', session);
-
-      let finished = false;
-      const timeout = setTimeout(() => finish(new Error(`GAS ${action} 連線逾時`)), 15000);
-
-      function finish(error, value) {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timeout);
-        try { delete window[callback]; } catch (_) {}
-        script.remove();
-        error ? reject(error) : resolve(value);
-      }
-
-      window[callback] = response => finish(null, response);
-      script.onerror = () => finish(new Error(`無法載入 GAS ${action}`));
-      script.src = CFG.API_URL + '?' + params.toString();
-      document.head.appendChild(script);
-    });
-  }
-
-  async function api(action, payload = {}, options = {}) {
-    const retryable = RETRYABLE_ACTIONS.has(action);
-    const attempts = retryable ? RETRY_ATTEMPTS : 1;
-    let lastError = null;
-
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-      try {
-        const response = await jsonp(action, payload, options);
-
-        if (!response?.ok) {
-          const backendError = new Error(response?.error || `GAS ${action} 操作失敗`);
-          backendError.isBackendError = true;
-          throw backendError;
-        }
-
-        if (attempt > 1) {
-          console.info(`GAS ${action} 第 ${attempt} 次連線成功`);
-        }
-
-        return response.data;
-      } catch (error) {
-        lastError = error;
-
-        // 後端已正常回覆的業務錯誤（例如 Session 過期、版本錯誤）不重試。
-        // 只有 script 載入失敗或逾時等暫時性連線問題才自動重試。
-        if (!retryable || error?.isBackendError || attempt >= attempts) {
-          break;
-        }
-
-        const waitMs = RETRY_BASE_DELAY_MS * attempt;
-        console.warn(`GAS ${action} 第 ${attempt} 次連線失敗，${waitMs}ms 後重試`, error);
-        await sleep(waitMs);
-      }
-    }
-
-    if (retryable && lastError && !lastError.isBackendError) {
-      const finalError = new Error(`GAS ${action} 連線失敗，已自動重試 ${RETRY_ATTEMPTS} 次：${lastError.message}`);
-      finalError.cause = lastError;
-      throw finalError;
-    }
-
-    throw lastError || new Error(`GAS ${action} 操作失敗`);
-  }
-
-  function postLoginCredential(credential, sessionKey) {
-    const frame = document.createElement('iframe');
-    frame.name = 'learningAiLogin_' + Date.now();
-    frame.style.display = 'none';
-
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = CFG.API_URL;
-    form.target = frame.name;
-    form.style.display = 'none';
-
-    [
-      ['action', 'establishSession'],
-      ['credential', credential],
-      ['session_key', sessionKey]
-    ].forEach(([name, value]) => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = name;
-      input.value = value;
-      form.appendChild(input);
-    });
-
-    document.body.appendChild(frame);
-    document.body.appendChild(form);
-    form.submit();
-    form.remove();
-    setTimeout(() => frame.remove(), 15000);
-  }
-
-  async function establishCloudSession(credential) {
-    const key = randomSessionKey();
-    cloudSession = key;
-    postLoginCredential(credential, key);
-
-    const deadline = Date.now() + 12000;
-    let lastError = null;
-
-    while (Date.now() < deadline) {
-      await sleep(450);
-      try {
-        const response = await jsonp('sessionStatus', {}, { session: key });
-        if (response?.ok && response?.data?.ready) {
-          sessionStorage.setItem(SESSION_STORAGE_KEY, key);
-          return response.data;
-        }
-        if (response?.error) lastError = new Error(response.error);
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    cloudSession = '';
-    sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    throw lastError || new Error('Google 帳號已登入，但 GAS Session 建立逾時');
+  async function api(action, payload = {}) {
+    return BRIDGE.call(action, payload);
   }
 
   function remoteToStore(remote) {
@@ -223,7 +77,9 @@
 
     return {
       ...newer,
-      status: localRecord.status === 'completed' || cloudRecord.status === 'completed' ? 'completed' : newer.status,
+      status: localRecord.status === 'completed' || cloudRecord.status === 'completed'
+        ? 'completed'
+        : newer.status,
       actual_seconds: Math.max(Number(localRecord.actual_seconds || 0), Number(cloudRecord.actual_seconds || 0)),
       actual_minutes: Math.max(Number(localRecord.actual_minutes || 0), Number(cloudRecord.actual_minutes || 0))
     };
@@ -298,6 +154,7 @@
       const cloudRecord = cloudStore.records?.[day];
       const localTime = parseStamp(localRecord.updated_at);
       const cloudTime = parseStamp(cloudRecord?.updated_at);
+
       if (!cloudRecord || localTime > cloudTime || Number(localRecord.actual_seconds || 0) > Number(cloudRecord.actual_seconds || 0)) {
         await api('saveRecord', recordPayload(day, localRecord));
       }
@@ -331,7 +188,6 @@
       });
     }
 
-    // Historical check-ins and start date are small enough to migrate through syncStore.
     if ((localStore.checkins || []).length || localStore.startDate) {
       await api('syncStore', {
         store: {
@@ -354,12 +210,12 @@
     hydrate();
     renderAll();
     cloudConnected = true;
-    document.documentElement.dataset.aiLmsBackend = 'gas';
+    document.documentElement.dataset.aiLmsBackend = 'gas-bridge';
     return merged;
   }
 
   async function refreshCloud() {
-    if (!cloudSession || !profile) return null;
+    if (!BRIDGE.hasSession() || !profile) return null;
     const localBefore = loadStore();
     const remote = await api('bootstrap');
     applyRemote(remote, localBefore);
@@ -380,16 +236,17 @@
       };
 
       $('configWarning').classList.add('hidden');
-      $('loginMessage').textContent = 'Google 帳號登入成功，正在連線學習資料庫…';
+      $('loginMessage').textContent = 'Google 帳號登入成功，正在啟動安全資料橋接…';
 
-      const health = await api('health', {}, { session: '' });
+      await BRIDGE.ready();
+      const health = await BRIDGE.call('health', {}, { session: '' });
       const version = String(health?.api_version || '');
       if (CFG.API_VERSION && version !== String(CFG.API_VERSION)) {
-        throw new Error(`GAS 版本為 ${version || '未知'}，前端需要 ${CFG.API_VERSION}`);
+        throw new Error(`GAS Bridge 版本為 ${version || '未知'}，前端需要 ${CFG.API_VERSION}`);
       }
 
       $('loginMessage').textContent = '正在驗證 Google 帳號…';
-      await establishCloudSession(credential);
+      await BRIDGE.login(credential);
 
       $('loginMessage').textContent = '正在載入個人學習紀錄…';
       const localBefore = loadStore();
@@ -399,17 +256,19 @@
       remote = await api('bootstrap');
       applyRemote(remote, localBefore);
 
+      sessionStorage.setItem('ai-learning-active-email', profile.email || '');
+      sessionStorage.setItem('ai-learning-active-name', profile.name || '');
+
       $('loginScreen').classList.add('hidden');
       $('appShell').classList.remove('hidden');
       $('loginMessage').textContent = '登入完成。';
     } catch (error) {
       cloudConnected = false;
-      cloudSession = '';
-      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      BRIDGE.clearSession();
       document.documentElement.dataset.aiLmsBackend = 'error';
       $('loginMessage').textContent = '登入失敗：' + error.message;
       $('configWarning').classList.remove('hidden');
-      $('configWarning').innerHTML = '<strong>Google 帳號已選取，但學習資料庫連線失敗。</strong><br>' + esc(error.message);
+      $('configWarning').innerHTML = '<strong>Google 帳號已選取，但學習資料庫橋接失敗。</strong><br>' + esc(error.message);
     }
   };
 
@@ -417,7 +276,7 @@
   saveRecord = function (status = 'in_progress') {
     const day = Number(data?.currentPlan?.day_no || 0);
     localSaveRecord(status);
-    if (!cloudSession || !day) return;
+    if (!BRIDGE.hasSession() || !day) return;
 
     const record = data?.store?.records?.[day];
     if (!record) return;
@@ -440,7 +299,7 @@
 
   $('checklist').addEventListener('change', event => {
     const box = event.target.closest('[data-check]');
-    if (!box || !cloudSession || !data?.currentPlan) return;
+    if (!box || !BRIDGE.hasSession() || !data?.currentPlan) return;
 
     const day = Number(data.currentPlan.day_no);
     const no = Number(box.dataset.check);
@@ -449,15 +308,15 @@
       item_no: no,
       item_text: data.currentPlan.checklist[no - 1] || '',
       checked: box.checked
-    }).catch(error => console.warn('Checklist cloud sync failed:', error));
+    }).catch(error => console.warn('Checklist bridge sync failed:', error));
   });
 
   const localCheckin = $('checkinBtn').onclick;
   $('checkinBtn').onclick = function () {
     const day = Number(data?.currentPlan?.day_no || 1);
     if (typeof localCheckin === 'function') localCheckin.call(this);
-    if (!cloudSession) return;
-    api('checkin', { day_no: day }).catch(error => console.warn('Check-in cloud sync failed:', error));
+    if (!BRIDGE.hasSession()) return;
+    api('checkin', { day_no: day }).catch(error => console.warn('Check-in bridge sync failed:', error));
   };
 
   const localPortfolio = $('addPortfolioBtn').onclick;
@@ -471,15 +330,15 @@
     };
 
     if (typeof localPortfolio === 'function') localPortfolio.call(this);
-    if (!cloudSession || !payload.title) return;
+    if (!BRIDGE.hasSession() || !payload.title) return;
 
-    api('savePortfolio', payload).catch(error => console.warn('Portfolio cloud sync failed:', error));
+    api('savePortfolio', payload).catch(error => console.warn('Portfolio bridge sync failed:', error));
   };
 
   const localReport = $('generateReportBtn').onclick;
   $('generateReportBtn').onclick = function () {
     if (typeof localReport === 'function') localReport.call(this);
-    if (!cloudSession) return;
+    if (!BRIDGE.hasSession()) return;
 
     api('generateReport')
       .then(report => {
@@ -488,34 +347,33 @@
         hydrate();
         renderReport(report);
       })
-      .catch(error => console.warn('Report cloud sync failed:', error));
+      .catch(error => console.warn('Report bridge sync failed:', error));
   };
 
   const localLogout = $('logoutBtn').onclick;
   $('logoutBtn').onclick = function () {
-    const session = cloudSession;
-    cloudSession = '';
+    const hadSession = BRIDGE.hasSession();
+    if (hadSession) api('logout').catch(() => {});
+    BRIDGE.clearSession();
     cloudConnected = false;
-    sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    if (session) {
-      jsonp('logout', {}, { session }).catch(() => {});
-    }
+    sessionStorage.removeItem('ai-learning-active-email');
+    sessionStorage.removeItem('ai-learning-active-name');
     if (typeof localLogout === 'function') localLogout.call(this);
   };
 
   function checkpointCurrentTimer() {
-    if (!cloudConnected || !cloudSession || !data?.currentPlan || !timer?.running) return;
+    if (!cloudConnected || !BRIDGE.hasSession() || !data?.currentPlan || !timer?.running) return;
     const day = Number(data.currentPlan.day_no);
     const record = data.store.records?.[day];
     if (!record) return;
-    api('saveRecord', recordPayload(day, record)).catch(error => console.warn('Timer checkpoint failed:', error));
+    api('saveRecord', recordPayload(day, record)).catch(error => console.warn('Timer bridge checkpoint failed:', error));
   }
 
   checkpointId = setInterval(checkpointCurrentTimer, CLOUD_CHECKPOINT_MS);
 
   window.addEventListener('pageshow', () => {
-    if (!cloudSession || !profile || !data) return;
-    refreshCloud().catch(error => console.warn('Cloud refresh skipped:', error));
+    if (!BRIDGE.hasSession() || !profile || !data) return;
+    refreshCloud().catch(error => console.warn('Bridge cloud refresh skipped:', error));
   });
 
   window.addEventListener('pagehide', () => {
@@ -526,6 +384,6 @@
     api,
     refresh: refreshCloud,
     isConnected: () => cloudConnected,
-    getSession: () => cloudSession
+    getSession: () => BRIDGE.getSession()
   };
 })();
