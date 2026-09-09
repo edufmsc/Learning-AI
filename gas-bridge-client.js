@@ -17,6 +17,7 @@
   let readyPromise = null;
   let readyResolve = null;
   let readyReject = null;
+  let iframeLoaded = false;
 
   function randomId(prefix = 'req') {
     const bytes = new Uint8Array(16);
@@ -40,6 +41,9 @@
   function ensureBridge() {
     if (readyPromise) return readyPromise;
 
+    iframeLoaded = false;
+    bridgeWindow = null;
+
     readyPromise = new Promise((resolve, reject) => {
       readyResolve = resolve;
       readyReject = reject;
@@ -57,6 +61,11 @@
       url.searchParams.set('_', String(Date.now()));
       iframe.src = url.toString();
 
+      iframe.onload = () => {
+        iframeLoaded = true;
+        console.info('GAS Bridge iframe 已載入，等待 ready 訊息。');
+      };
+
       iframe.onerror = () => {
         readyPromise = null;
         readyReject?.(new Error('無法載入 GAS Bridge iframe'));
@@ -67,7 +76,10 @@
       setTimeout(() => {
         if (!bridgeWindow) {
           readyPromise = null;
-          readyReject?.(new Error('GAS Bridge 初始化逾時（未收到 ready 訊息）'));
+          const detail = iframeLoaded
+            ? 'GAS Bridge iframe 已載入，但未收到 ready 訊息（請確認目前部署版本的 doGet(?bridge=1) 有回傳 Bridge 程式）'
+            : 'GAS Bridge iframe 未完成載入（請確認 Web App 部署權限與 /exec?bridge=1 是否可開啟）';
+          readyReject?.(new Error(detail));
         }
       }, READY_TIMEOUT_MS);
     });
@@ -78,13 +90,14 @@
   window.addEventListener('message', event => {
     const message = event.data || {};
     if (message.source !== BRIDGE_SOURCE) return;
-    if (!isTrustedBridgeOrigin(event.origin)) return;
+    if (!isTrustedBridgeOrigin(event.origin)) {
+      console.warn('忽略未知來源的 GAS Bridge 訊息：', event.origin);
+      return;
+    }
 
     if (message.type === 'ready') {
-      // 關鍵：保存實際送出 ready 的 GAS sandbox window。
-      // 後續 request 要傳回這個 event.source，而不是假設 iframe.contentWindow
-      // 就是最終執行 Bridge.html 的那一層。
       bridgeWindow = event.source;
+      console.info('GAS Bridge ready：', event.origin, message.api_version || '');
       readyResolve?.({ api_version: message.api_version || '' });
       return;
     }
@@ -166,6 +179,6 @@
     clearSession,
     getSession: () => cloudSession,
     hasSession: () => !!cloudSession,
-    transport: 'persistent-iframe-v34'
+    transport: 'persistent-iframe-v34.1'
   };
 })();
