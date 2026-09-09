@@ -7,8 +7,8 @@ window.AI_LMS_CONFIG = {
   // Learning-AI Google Apps Script Web App。
   // v3.2 起不再用 JSONP 當主要資料傳輸，而是載入隱藏的 GAS HTML Bridge iframe，
   // 再透過 postMessage + google.script.run 與 Code.gs 溝通。
-  API_URL: 'https://script.google.com/macros/s/AKfycbyZbBRQOMnqn31Jx-BQBgczHoYNzmwkWUz0H7FloZYW4Sd-lIjq3RkHjmSn_ms6QANE/exec',
-  BRIDGE_URL: 'https://script.google.com/macros/s/AKfycbyZbBRQOMnqn31Jx-BQBgczHoYNzmwkWUz0H7FloZYW4Sd-lIjq3RkHjmSn_ms6QANE/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbwr0paULP5Mh0SKU9TTE8Q2iFC247ku8lrtwD54_BNyyOpXqxSUKhgF8-jK3KSsgYqy/exec',
+  BRIDGE_URL: 'https://script.google.com/macros/s/AKfycbwr0paULP5Mh0SKU9TTE8Q2iFC247ku8lrtwD54_BNyyOpXqxSUKhgF8-jK3KSsgYqy/exec',
   API_VERSION: '3.2',
   BACKEND_MODE: 'gas-bridge'
 };
