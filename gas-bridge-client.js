@@ -18,6 +18,12 @@
   }
 
   function isTrustedBridgeOrigin(origin) {
+    // Apps Script HTML Service normally responds from script.google.com or
+    // a generated script.googleusercontent.com origin. Some sandboxed HTML
+    // responses can surface as the opaque "null" origin, so allow it only
+    // after the random pending requestId has already matched.
+    if (origin === 'null') return true;
+
     try {
       const url = new URL(origin);
       if (url.protocol !== 'https:') return false;
@@ -31,7 +37,7 @@
 
   function cleanup(job) {
     if (!job) return;
-    clearTimeout(job.timeout);
+    if (job.timeout) clearTimeout(job.timeout);
     try { job.form?.remove(); } catch (_) {}
     try { job.iframe?.remove(); } catch (_) {}
   }
@@ -43,9 +49,8 @@
     const job = pending.get(message.requestId);
     if (!job) return;
 
-    // Apps Script HTML Service is sandboxed in nested googleusercontent iframes.
-    // The response may therefore come from a generated *.script.googleusercontent.com origin
-    // rather than directly from the iframe element created by GitHub Pages.
+    // requestId is a cryptographically random per-request nonce. Only after
+    // matching that pending nonce do we evaluate the Apps Script response origin.
     if (!isTrustedBridgeOrigin(event.origin)) {
       console.warn('Ignored untrusted GAS Bridge response origin:', event.origin);
       return;
@@ -94,7 +99,7 @@
       const timeout = setTimeout(() => {
         pending.delete(requestId);
         cleanup({ iframe, form, timeout: null });
-        reject(new Error(`GAS Bridge ${action} 逾時`));
+        reject(new Error(`GAS Bridge ${action} 逾時（POST 已送出，但未收到 GAS 回傳訊息）`));
       }, REQUEST_TIMEOUT_MS);
 
       pending.set(requestId, { resolve, reject, iframe, form, timeout, action });
@@ -158,6 +163,6 @@
     clearSession,
     getSession: () => cloudSession,
     hasSession: () => !!cloudSession,
-    transport: 'form-post-iframe'
+    transport: 'form-post-iframe-v33'
   };
 })();
