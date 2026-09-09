@@ -4,12 +4,19 @@
   const CFG = window.AI_LMS_CONFIG || {};
   if (!CFG.BRIDGE_URL) return;
 
-  const SESSION_KEY = 'ai-learning-gas-session-v33';
+  const SESSION_KEY = 'ai-learning-gas-session-v34';
   const REQUEST_TIMEOUT_MS = 30000;
+  const READY_TIMEOUT_MS = 15000;
   const BRIDGE_SOURCE = 'learning-ai-gas-bridge';
+  const PARENT_SOURCE = 'learning-ai-parent';
   const pending = new Map();
+
   let cloudSession = sessionStorage.getItem(SESSION_KEY) || '';
-  let healthPromise = null;
+  let iframe = null;
+  let bridgeWindow = null;
+  let readyPromise = null;
+  let readyResolve = null;
+  let readyReject = null;
 
   function randomId(prefix = 'req') {
     const bytes = new Uint8Array(16);
@@ -18,12 +25,7 @@
   }
 
   function isTrustedBridgeOrigin(origin) {
-    // Apps Script HTML Service normally responds from script.google.com or
-    // a generated script.googleusercontent.com origin. Some sandboxed HTML
-    // responses can surface as the opaque "null" origin, so allow it only
-    // after the random pending requestId has already matched.
     if (origin === 'null') return true;
-
     try {
       const url = new URL(origin);
       if (url.protocol !== 'https:') return false;
@@ -35,104 +37,105 @@
     }
   }
 
-  function cleanup(job) {
-    if (!job) return;
-    if (job.timeout) clearTimeout(job.timeout);
-    try { job.form?.remove(); } catch (_) {}
-    try { job.iframe?.remove(); } catch (_) {}
-  }
+  function ensureBridge() {
+    if (readyPromise) return readyPromise;
 
-  window.addEventListener('message', event => {
-    const message = event.data || {};
-    if (message.source !== BRIDGE_SOURCE || message.type !== 'response' || !message.requestId) return;
+    readyPromise = new Promise((resolve, reject) => {
+      readyResolve = resolve;
+      readyReject = reject;
 
-    const job = pending.get(message.requestId);
-    if (!job) return;
-
-    // requestId is a cryptographically random per-request nonce. Only after
-    // matching that pending nonce do we evaluate the Apps Script response origin.
-    if (!isTrustedBridgeOrigin(event.origin)) {
-      console.warn('Ignored untrusted GAS Bridge response origin:', event.origin);
-      return;
-    }
-
-    pending.delete(message.requestId);
-    cleanup(job);
-
-    if (message.ok) job.resolve(message.data);
-    else job.reject(new Error(message.error || 'GAS Bridge 操作失敗'));
-  });
-
-  function addField(form, name, value) {
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = name;
-    input.value = value == null ? '' : String(value);
-    form.appendChild(input);
-  }
-
-  function postRequest(action, payload = {}, options = {}) {
-    const requestId = randomId();
-    const frameName = 'learningAiGasBridge_' + requestId.replace(/[^A-Za-z0-9_]/g, '');
-
-    return new Promise((resolve, reject) => {
-      const iframe = document.createElement('iframe');
-      iframe.name = frameName;
+      iframe = document.createElement('iframe');
+      iframe.id = 'learningAiGasBridgeFrame';
       iframe.title = 'Learning-AI secure data bridge';
       iframe.setAttribute('aria-hidden', 'true');
       iframe.tabIndex = -1;
       iframe.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;border:0;left:-9999px;top:-9999px;';
 
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = CFG.BRIDGE_URL;
-      form.target = frameName;
-      form.style.display = 'none';
+      const url = new URL(CFG.BRIDGE_URL);
+      url.searchParams.set('bridge', '1');
+      url.searchParams.set('v', '34');
+      url.searchParams.set('_', String(Date.now()));
+      iframe.src = url.toString();
 
-      const session = options.session === undefined ? cloudSession : options.session;
-      addField(form, 'bridge_post', '1');
-      addField(form, 'request_id', requestId);
-      addField(form, 'action', action);
-      addField(form, 'session', session || '');
-      addField(form, 'payload', JSON.stringify(payload || {}));
+      iframe.onerror = () => {
+        readyPromise = null;
+        readyReject?.(new Error('無法載入 GAS Bridge iframe'));
+      };
 
+      document.body.appendChild(iframe);
+
+      setTimeout(() => {
+        if (!bridgeWindow) {
+          readyPromise = null;
+          readyReject?.(new Error('GAS Bridge 初始化逾時（未收到 ready 訊息）'));
+        }
+      }, READY_TIMEOUT_MS);
+    });
+
+    return readyPromise;
+  }
+
+  window.addEventListener('message', event => {
+    const message = event.data || {};
+    if (message.source !== BRIDGE_SOURCE) return;
+    if (!isTrustedBridgeOrigin(event.origin)) return;
+
+    if (message.type === 'ready') {
+      // 關鍵：保存實際送出 ready 的 GAS sandbox window。
+      // 後續 request 要傳回這個 event.source，而不是假設 iframe.contentWindow
+      // 就是最終執行 Bridge.html 的那一層。
+      bridgeWindow = event.source;
+      readyResolve?.({ api_version: message.api_version || '' });
+      return;
+    }
+
+    if (message.type !== 'response' || !message.requestId) return;
+
+    const job = pending.get(message.requestId);
+    if (!job) return;
+
+    pending.delete(message.requestId);
+    clearTimeout(job.timeout);
+
+    if (message.ok) job.resolve(message.data);
+    else job.reject(new Error(message.error || 'GAS Bridge 操作失敗'));
+  });
+
+  async function call(action, payload = {}, options = {}) {
+    await ensureBridge();
+    if (!bridgeWindow) throw new Error('GAS Bridge 尚未完成初始化');
+
+    const requestId = randomId();
+    const session = options.session === undefined ? cloudSession : options.session;
+
+    return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         pending.delete(requestId);
-        cleanup({ iframe, form, timeout: null });
-        reject(new Error(`GAS Bridge ${action} 逾時（POST 已送出，但未收到 GAS 回傳訊息）`));
+        reject(new Error(`GAS Bridge ${action} 逾時（iframe 已連線，但未收到 action 回應）`));
       }, REQUEST_TIMEOUT_MS);
 
-      pending.set(requestId, { resolve, reject, iframe, form, timeout, action });
-      document.body.appendChild(iframe);
-      document.body.appendChild(form);
+      pending.set(requestId, { resolve, reject, timeout, action });
 
       try {
-        form.submit();
-        setTimeout(() => {
-          try { form.remove(); } catch (_) {}
-        }, 100);
+        bridgeWindow.postMessage({
+          source: PARENT_SOURCE,
+          type: 'request',
+          requestId,
+          action,
+          payload: payload || {},
+          session: session || ''
+        }, '*');
       } catch (error) {
         pending.delete(requestId);
-        cleanup({ iframe, form, timeout });
+        clearTimeout(timeout);
         reject(error);
       }
     });
   }
 
   async function ready() {
-    if (!healthPromise) {
-      healthPromise = postRequest('health', {}, { session: '' })
-        .catch(error => {
-          healthPromise = null;
-          throw error;
-        });
-    }
-    return healthPromise;
-  }
-
-  async function call(action, payload = {}, options = {}) {
-    if (action !== 'health') await ready();
-    return postRequest(action, payload, options);
+    await ensureBridge();
+    return call('health', {}, { session: '' });
   }
 
   function createSessionKey() {
@@ -163,6 +166,6 @@
     clearSession,
     getSession: () => cloudSession,
     hasSession: () => !!cloudSession,
-    transport: 'form-post-iframe-v33'
+    transport: 'persistent-iframe-v34'
   };
 })();
